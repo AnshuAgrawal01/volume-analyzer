@@ -99,15 +99,29 @@ export default function Home() {
             {/* Methodology note */}
             <Alert>
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Methodology</AlertTitle>
-              <AlertDescription className="text-sm">
-                <strong>Volume Spread Analysis + Wyckoff:</strong> A volume spike
-                (&ge;3x 20-day avg) is classified by price behavior. If price
-                barely moved (&lt;0.5x ATR, return z-score &lt;1&sigma;), it
-                signals institutional absorption. Close position within the
-                day&apos;s range determines accumulation (close near high) vs
-                distribution (close near low). News events are cross-referenced
-                from BSE corporate announcements.
+              <AlertTitle>Methodology — 6-Factor Multi-Bar Scoring</AlertTitle>
+              <AlertDescription className="text-sm space-y-1">
+                <p>
+                  <strong>Step 1 — News gate:</strong> If price moved &gt;1x ATR
+                  with z-score &gt;1.5&sigma;, the spike is classified as
+                  news-driven (no further scoring).
+                </p>
+                <p>
+                  <strong>Step 2 — 6-factor institutional scoring:</strong> Each
+                  factor scores +1 (accumulation), -1 (distribution), or 0
+                  (neutral). Sum ranges from -6 to +6.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  (1) CLV &gt;0.70/&lt;0.30 &bull; (2) CMF(20) &gt;+0.05/&lt;-0.05
+                  &bull; (3) Volume asymmetry ratio &gt;1.3/&lt;0.7 &bull; (4) ADL
+                  slope rising/falling &bull; (5) Effort vs Result: high vol +
+                  narrow spread + close position &bull; (6) Follow-through: next 3
+                  bars confirm or reject.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Score &ge;3 = high confidence, &ge;1 = moderate/low, 0 = ambiguous.
+                  Based on VSA (Tom Williams), Wyckoff, CMF (Chaikin), ADL.
+                </p>
               </AlertDescription>
             </Alert>
 
