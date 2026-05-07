@@ -25,8 +25,13 @@ import type { OHLCVBar, VolumeSpike, AnalysisResult, Announcement, FactorScores 
  *    - ATR-relative price change for news vs institutional separation
  *    - Return z-score for unusual move detection
  *
+ * 6. Market Context (Wyckoff Relative Strength / Fama-French decomposition)
+ *    - Compare stock return vs broad market (Nifty 50) on spike day
+ *    - Stock resisting market decline = accumulation conviction
+ *    - Stock resisting market rally = distribution conviction
+ *
  * Single-bar classification is insufficient (all sources agree).
- * We use a 6-factor scoring system with multi-bar context.
+ * We use a 7-factor scoring system with multi-bar context.
  */
 
 const ROLLING_WINDOW = 20;
@@ -288,7 +293,8 @@ export function analyze(
   bars: OHLCVBar[],
   volumeThreshold: number = 3,
   priceThreshold: number = 1.0,
-  announcements: Map<string, Announcement[]> = new Map()
+  announcements: Map<string, Announcement[]> = new Map(),
+  marketReturns: Map<string, number> = new Map() // date -> Nifty 50 daily return %
 ): { spikes: VolumeSpike[]; rollingVolumes: number[] } {
   if (bars.length < MIN_BARS_BEFORE_ANALYSIS) {
     return { spikes: [], rollingVolumes: [] };
@@ -332,6 +338,7 @@ export function analyze(
       ];
 
       const dayAnnouncements = announcements.get(bar.date) || [];
+      const mktRet = marketReturns.get(bar.date) ?? 0;
       spikes.push({
         date: bar.date, open: bar.open, high: bar.high, low: bar.low, close: bar.close,
         volume: bar.volume,
@@ -349,7 +356,8 @@ export function analyze(
         adlSlope: r2(adlSlope(data.adl, i, ROLLING_WINDOW)),
         volumeAsymmetryRatio: r2(data.volumeAsymmetry[i]),
         followThroughScore: 0,
-        factorScores: { clv: 0, cmf: 0, volumeAsymmetry: 0, adlSlope: 0, effortVsResult: 0, followThrough: 0 },
+        marketReturn: r2(mktRet),
+        factorScores: { clv: 0, cmf: 0, volumeAsymmetry: 0, adlSlope: 0, effortVsResult: 0, followThrough: 0, marketContext: 0 },
         totalScore: 0,
         confidence: "high",
         classification,
@@ -408,6 +416,32 @@ export function analyze(
     // Factor 6: Follow-through (next 3 bars)
     const ftResult = computeFollowThrough(bars, i, closePosition);
 
+    // Factor 7: Market Context (Wyckoff Relative Strength)
+    // Stock resisting market decline on a spike day = accumulation conviction
+    // Stock resisting market rally on a spike day = distribution conviction
+    const mktReturn = marketReturns.get(bar.date) ?? 0;
+    const stockReturn = priceChangePercent;
+    const divergence = stockReturn - mktReturn; // positive = stock outperformed
+    // Threshold: market moved >0.5% AND stock diverged from market by >1%
+    const marketMoved = Math.abs(mktReturn) > 0.5;
+    let mktScore = 0;
+    let mktSignal = "";
+    if (marketMoved) {
+      if (mktReturn < -0.5 && divergence > 1.0) {
+        // Market fell but stock held/rose — accumulation
+        mktScore = 1;
+        mktSignal = `Market fell ${mktReturn.toFixed(1)}% but stock ${stockReturn >= 0 ? "rose" : "only fell"} ${stockReturn.toFixed(1)}% — relative strength (accumulation conviction)`;
+      } else if (mktReturn > 0.5 && divergence < -1.0) {
+        // Market rose but stock fell/lagged — distribution
+        mktScore = -1;
+        mktSignal = `Market rose ${mktReturn.toFixed(1)}% but stock ${stockReturn <= 0 ? "fell" : "only rose"} ${stockReturn.toFixed(1)}% — relative weakness (distribution conviction)`;
+      } else {
+        mktSignal = `Market ${mktReturn > 0 ? "+" : ""}${mktReturn.toFixed(1)}%, stock ${stockReturn > 0 ? "+" : ""}${stockReturn.toFixed(1)}% — moved in line (neutral)`;
+      }
+    } else {
+      mktSignal = `Market flat (${mktReturn > 0 ? "+" : ""}${mktReturn.toFixed(1)}%) — no relative strength/weakness signal`;
+    }
+
     // ── Aggregate score ──
     const factorScores: FactorScores = {
       clv: clvScore,
@@ -416,27 +450,28 @@ export function analyze(
       adlSlope: adlScore,
       effortVsResult: evrResult.score,
       followThrough: ftResult.score,
+      marketContext: mktScore,
     };
 
-    const totalScore = clvScore + cmfScore + vaScore + adlScore + evrResult.score + ftResult.score;
-    // Range: -6 to +6
+    const totalScore = clvScore + cmfScore + vaScore + adlScore + evrResult.score + ftResult.score + mktScore;
+    // Range: -7 to +7
 
     // ── Classification from score ──
     let classification: VolumeSpike["classification"];
     let confidence: VolumeSpike["confidence"];
 
-    if (totalScore >= 3) {
+    if (totalScore >= 4) {
       classification = "institutional_accumulation";
       confidence = "high";
     } else if (totalScore >= 1) {
       classification = "institutional_accumulation";
-      confidence = totalScore >= 2 ? "moderate" : "low";
-    } else if (totalScore <= -3) {
+      confidence = totalScore >= 3 ? "moderate" : "low";
+    } else if (totalScore <= -4) {
       classification = "institutional_distribution";
       confidence = "high";
     } else if (totalScore <= -1) {
       classification = "institutional_distribution";
-      confidence = totalScore <= -2 ? "moderate" : "low";
+      confidence = totalScore <= -3 ? "moderate" : "low";
     } else {
       classification = "ambiguous";
       confidence = "low";
@@ -451,7 +486,8 @@ export function analyze(
       adlSignal,
       evrResult.signal,
       ftResult.signal,
-      `Multi-factor score: ${totalScore > 0 ? "+" : ""}${totalScore}/6 → ${classification.replace(/_/g, " ")} (${confidence} confidence)`,
+      mktSignal,
+      `Multi-factor score: ${totalScore > 0 ? "+" : ""}${totalScore}/7 → ${classification.replace(/_/g, " ")} (${confidence} confidence)`,
     ];
 
     const dayAnnouncements = announcements.get(bar.date) || [];
@@ -473,6 +509,7 @@ export function analyze(
       adlSlope: r2(adlSlopeVal),
       volumeAsymmetryRatio: r2(vaRatio),
       followThroughScore: ftResult.score,
+      marketReturn: r2(mktReturn),
       factorScores,
       totalScore,
       confidence,

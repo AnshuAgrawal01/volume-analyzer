@@ -15,6 +15,7 @@ export interface FactorScores {
   adlSlope: number;    // ADL trend (20d): rising = +1, falling = -1
   effortVsResult: number; // High vol + narrow spread + close position
   followThrough: number;  // Next 3 bars: price holds = +1, fails = -1
+  marketContext: number;  // Stock resisted market direction = institutional conviction
 }
 
 export interface VolumeSpike {
@@ -40,9 +41,10 @@ export interface VolumeSpike {
   adlSlope: number;       // ADL slope over 20 bars (normalized)
   volumeAsymmetryRatio: number; // avg vol on up-closes / avg vol on down-closes (10d)
   followThroughScore: number;   // +1 price held, -1 price failed, 0 no data yet
+  marketReturn: number;         // Nifty 50 return on this day (%)
 
   factorScores: FactorScores;
-  totalScore: number;     // Sum of all factor scores (-6 to +6)
+  totalScore: number;     // Sum of all factor scores (-7 to +7)
   confidence: "high" | "moderate" | "low";
 
   classification: "institutional_accumulation" | "institutional_distribution" | "news_driven_up" | "news_driven_down" | "ambiguous";

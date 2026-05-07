@@ -89,19 +89,26 @@ export async function POST(request: Request) {
         ? bars.slice(listingCutoff)
         : bars;
 
-    // Fetch corporate announcements from BSE
-    const announcements = await fetchBSEAnnouncements(
-      symbol.toUpperCase(),
-      format(startDate, "yyyy-MM-dd"),
-      format(endDate, "yyyy-MM-dd")
-    );
+    // Fetch corporate announcements and market benchmark in parallel
+    const [announcements, marketReturns] = await Promise.all([
+      fetchBSEAnnouncements(
+        symbol.toUpperCase(),
+        format(startDate, "yyyy-MM-dd"),
+        format(endDate, "yyyy-MM-dd")
+      ),
+      fetchMarketReturns(
+        format(startDate, "yyyy-MM-dd"),
+        format(endDate, "yyyy-MM-dd")
+      ),
+    ]);
 
     // Run analysis
     const { spikes, rollingVolumes } = analyze(
       effectiveBars,
       volumeThreshold,
       priceThreshold,
-      announcements
+      announcements,
+      marketReturns
     );
 
     const analysisResult = buildAnalysisResult(
@@ -171,4 +178,40 @@ async function fetchBSEAnnouncements(
   }
 
   return announcements;
+}
+
+async function fetchMarketReturns(
+  fromDate: string,
+  toDate: string
+): Promise<Map<string, number>> {
+  const returns = new Map<string, number>();
+
+  try {
+    // Fetch Nifty 50 daily data as market benchmark
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = await yf.chart("^NSEI", {
+      period1: fromDate,
+      period2: toDate,
+      interval: "1d",
+    });
+
+    const quotes: Array<{
+      date: string | Date;
+      close?: number | null;
+    }> = result.quotes || [];
+
+    for (let i = 1; i < quotes.length; i++) {
+      const prev = quotes[i - 1];
+      const curr = quotes[i];
+      if (prev.close && curr.close && curr.date) {
+        const ret = ((curr.close - prev.close) / prev.close) * 100;
+        const dateStr = format(new Date(curr.date), "yyyy-MM-dd");
+        returns.set(dateStr, Math.round(ret * 100) / 100);
+      }
+    }
+  } catch {
+    console.warn("Nifty 50 data fetch failed — proceeding without market context");
+  }
+
+  return returns;
 }

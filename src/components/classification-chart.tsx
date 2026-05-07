@@ -11,9 +11,7 @@ import {
   Cell,
   PieChart,
   Pie,
-  Legend,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AnalysisResult, VolumeSpike } from "@/lib/types";
 
@@ -21,19 +19,19 @@ interface ClassificationChartProps {
   result: AnalysisResult;
 }
 
-const COLORS = {
-  institutional_accumulation: "hsl(145, 70%, 40%)",
-  institutional_distribution: "hsl(0, 70%, 50%)",
-  news_driven_up: "hsl(45, 90%, 50%)",
-  news_driven_down: "hsl(25, 90%, 50%)",
-  ambiguous: "hsl(215, 15%, 65%)",
+const COLORS: Record<string, string> = {
+  institutional_accumulation: "#30d158",
+  institutional_distribution: "#ff453a",
+  news_driven_up: "#ffd60a",
+  news_driven_down: "#ff9f0a",
+  ambiguous: "#48484a",
 };
 
 const LABELS: Record<string, string> = {
   institutional_accumulation: "Accumulation",
   institutional_distribution: "Distribution",
-  news_driven_up: "News (Bullish)",
-  news_driven_down: "News (Bearish)",
+  news_driven_up: "News up",
+  news_driven_down: "News down",
   ambiguous: "Ambiguous",
 };
 
@@ -46,17 +44,18 @@ export function ClassificationChart({ result }: ClassificationChartProps) {
     return Object.entries(counts).map(([key, value]) => ({
       name: LABELS[key] || key,
       value,
-      fill: COLORS[key as VolumeSpike["classification"]] || "#888",
+      fill: COLORS[key as VolumeSpike["classification"]] || "#48484a",
     }));
   }, [result.spikes]);
 
+  const total = pieData.reduce((s, p) => s + p.value, 0);
+
   const timelineData = useMemo(() => {
-    // Group spikes by quarter
     const quarters: Record<string, Record<string, number>> = {};
 
     for (const spike of result.spikes) {
       const date = new Date(spike.date);
-      const q = `${date.getFullYear()} Q${Math.floor(date.getMonth() / 3) + 1}`;
+      const q = `${String(date.getFullYear()).slice(2)} Q${Math.floor(date.getMonth() / 3) + 1}`;
 
       if (!quarters[q]) {
         quarters[q] = {
@@ -88,85 +87,152 @@ export function ClassificationChart({ result }: ClassificationChartProps) {
   }, [result.spikes]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Event Classification Breakdown</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="pie">
-          <TabsList>
-            <TabsTrigger value="pie">Distribution</TabsTrigger>
-            <TabsTrigger value="timeline">Timeline</TabsTrigger>
+    <section className="surface p-7">
+      <Tabs defaultValue="pie">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+          <div>
+            <h3 className="text-[15px] font-semibold tracking-tight">
+              Classification breakdown
+            </h3>
+            <p className="text-[12.5px] text-muted-foreground mt-1">
+              How {total} volume spikes resolved
+            </p>
+          </div>
+          <TabsList className="bg-secondary border-0 rounded-[8px] h-8 p-0.5">
+            <TabsTrigger
+              value="pie"
+              className="text-[12px] px-3 h-7 rounded-[6px] data-[state=active]:bg-background data-[state=active]:text-foreground text-muted-foreground"
+            >
+              Distribution
+            </TabsTrigger>
+            <TabsTrigger
+              value="timeline"
+              className="text-[12px] px-3 h-7 rounded-[6px] data-[state=active]:bg-background data-[state=active]:text-foreground text-muted-foreground"
+            >
+              Timeline
+            </TabsTrigger>
           </TabsList>
+        </div>
 
-          <TabsContent value="pie">
-            <div className="h-[300px]">
+        <TabsContent value="pie">
+          <div className="grid md:grid-cols-2 gap-6 items-center">
+            <div className="h-[260px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={pieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={110}
+                    innerRadius={70}
+                    outerRadius={108}
                     dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
+                    strokeWidth={3}
+                    stroke="#000"
+                    paddingAngle={1}
                   >
                     {pieData.map((entry, index) => (
                       <Cell key={index} fill={entry.fill} />
                     ))}
                   </Pie>
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#161618",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 10,
+                      fontSize: 12.5,
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-          </TabsContent>
-
-          <TabsContent value="timeline">
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={timelineData}>
-                  <XAxis dataKey="quarter" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar
-                    dataKey="accumulation"
-                    stackId="a"
-                    fill={COLORS.institutional_accumulation}
-                    name="Accumulation"
-                  />
-                  <Bar
-                    dataKey="distribution"
-                    stackId="a"
-                    fill={COLORS.institutional_distribution}
-                    name="Distribution"
-                  />
-                  <Bar
-                    dataKey="news_up"
-                    stackId="a"
-                    fill={COLORS.news_driven_up}
-                    name="News ↑"
-                  />
-                  <Bar
-                    dataKey="news_down"
-                    stackId="a"
-                    fill={COLORS.news_driven_down}
-                    name="News ↓"
-                  />
-                  <Bar
-                    dataKey="ambiguous"
-                    stackId="a"
-                    fill={COLORS.ambiguous}
-                    name="Ambiguous"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="space-y-2.5">
+              {pieData.map((entry) => {
+                const pct = total > 0 ? (entry.value / total) * 100 : 0;
+                return (
+                  <div key={entry.name} className="flex items-center gap-3">
+                    <span
+                      className="w-2 h-2 rounded-full inline-block shrink-0"
+                      style={{ backgroundColor: entry.fill }}
+                    />
+                    <span className="text-[13px] text-foreground/90 flex-1">
+                      {entry.name}
+                    </span>
+                    <span className="text-[13px] tnum text-muted-foreground">
+                      {entry.value}
+                    </span>
+                    <span className="text-[12px] tnum text-muted-foreground/70 w-10 text-right">
+                      {pct.toFixed(0)}%
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="timeline">
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={timelineData}
+                margin={{ top: 8, right: 8, bottom: 0, left: -12 }}
+              >
+                <XAxis
+                  dataKey="quarter"
+                  stroke="transparent"
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  stroke="transparent"
+                  tickLine={false}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                  contentStyle={{
+                    background: "#161618",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 10,
+                    fontSize: 12.5,
+                  }}
+                />
+                <Bar
+                  dataKey="accumulation"
+                  stackId="a"
+                  fill={COLORS.institutional_accumulation}
+                  name="Accumulation"
+                />
+                <Bar
+                  dataKey="distribution"
+                  stackId="a"
+                  fill={COLORS.institutional_distribution}
+                  name="Distribution"
+                />
+                <Bar
+                  dataKey="news_up"
+                  stackId="a"
+                  fill={COLORS.news_driven_up}
+                  name="News up"
+                />
+                <Bar
+                  dataKey="news_down"
+                  stackId="a"
+                  fill={COLORS.news_driven_down}
+                  name="News down"
+                />
+                <Bar
+                  dataKey="ambiguous"
+                  stackId="a"
+                  fill={COLORS.ambiguous}
+                  name="Ambiguous"
+                  radius={[3, 3, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </section>
   );
 }
+
